@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, Routes, REST, AttachmentBuilder, SlashCommandBuilder, InteractionType } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Routes, REST, SlashCommandBuilder } = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -10,8 +10,8 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel]
 });
 
-const SUBMIT_CHANNEL = '1385624201544601680';   // e.g. '1234567890'
-const REVIEW_CHANNEL = '1385623845469163660';   // e.g. '0987654321'
+const SUBMIT_CHANNEL = '1385624201544601680';
+const REVIEW_CHANNEL = '1385623845469163660';
 
 const commands = [
   new SlashCommandBuilder()
@@ -41,7 +41,6 @@ client.once('ready', async () => {
   }
 });
 
-// Util for timestamp formatting
 function discordTimestamp() {
   const unix = Math.floor(Date.now() / 1000);
   return `<t:${unix}:f>`;
@@ -49,13 +48,13 @@ function discordTimestamp() {
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+
   const { commandName } = interaction;
   const userId = interaction.user.id;
   const username = interaction.user.tag;
 
   const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
 
-  // Generic file prompt function
   async function promptForFile(promptText, allowSkip = false) {
     await interaction.reply({
       content: promptText,
@@ -66,41 +65,45 @@ client.on('interactionCreate', async (interaction) => {
     const collected = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
     const userMessage = collected.first();
 
-    if (!userMessage) {
-      return { status: 'timeout' };
-    }
-
+    if (!userMessage) return { status: 'timeout' };
     if (allowSkip && userMessage.content.toLowerCase().includes('no loot')) {
       return { status: 'skipped', message: userMessage };
     }
-
     if (userMessage.attachments.size > 0) {
       return { status: 'file', message: userMessage };
     }
-
     return { status: 'invalid', message: userMessage };
   }
 
+  // ColoStart or ColoEnd logic
   if (commandName === 'colostart' || commandName === 'coloend') {
-    const prompt = commandName === 'colostart'
+    const isStart = commandName === 'colostart';
+    const prompt = isStart
       ? '📸 Please upload your starting setup screenshot.'
       : '📸 Please upload your ending setup screenshot.';
 
     const response = await promptForFile(prompt);
     if (response.status === 'file') {
       const file = response.message.attachments.first().url;
+      const note = response.message.content || '*No additional notes provided.*';
+
       await reviewChannel.send({
-        content: `📥 ${commandName === 'colostart' ? '**Start**' : '**End**'} submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}`,
+        content: `📥 **${isStart ? 'Start' : 'End'}** submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Notes:\n${note}`,
         files: [file]
       });
 
       await response.message.delete();
-      await interaction.deleteReply();
+
+      await interaction.editReply({
+        content: `✅ Your **${isStart ? 'starting' : 'ending'} setup** was submitted successfully and forwarded to the event team.`,
+        ephemeral: true
+      });
     } else {
       await interaction.followUp({ content: '❌ Invalid or no file received.', ephemeral: true });
     }
   }
 
+  // Loot + Modifiers logic
   if (commandName === 'lootmodifiers') {
     const lootResponse = await promptForFile('💰 Please upload your loot screenshot (or type "no loot" to skip):', true);
 
@@ -115,7 +118,6 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // Prompt for modifiers
     await interaction.followUp({ content: '🎯 Please type the list of modifiers used.', ephemeral: true });
     const filter = m => m.author.id === userId;
     const collectedMods = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
@@ -132,8 +134,12 @@ client.on('interactionCreate', async (interaction) => {
     });
 
     await modMessage.delete();
-    await interaction.deleteReply();
+    await interaction.followUp({
+      content: '✅ Your **loot and modifiers** have been submitted successfully!',
+      ephemeral: true
+    });
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
