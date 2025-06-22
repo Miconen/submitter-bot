@@ -12,11 +12,12 @@ const client = new Client({
 
 const SUBMIT_CHANNEL = '1385624201544601680';
 const REVIEW_CHANNEL = '1385623845469163660';
+const GUILD_ID = '979445890064470036'; // 
 
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  // Register Slash Commands
+  // Register Slash Commands for this server
   const commands = [
     new SlashCommandBuilder().setName('colostart').setDescription('Submit your starting setup screenshot for the Colosseum event'),
     new SlashCommandBuilder().setName('coloend').setDescription('Submit your ending setup screenshot for the Colosseum event'),
@@ -26,16 +27,16 @@ client.once('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     await rest.put(
-      Routes.applicationCommands(client.user.id),
+      Routes.applicationGuildCommands(client.user.id, GUILD_ID),
       { body: commands }
     );
-    console.log('✅ Slash commands registered.');
+    console.log('✅ Slash commands registered instantly to guild:', GUILD_ID);
   } catch (error) {
     console.error('Slash command registration failed:', error);
   }
 });
 
-// Handle standard screenshot forwarding from the submit channel
+// Screenshot forwarding logic
 client.on('messageCreate', async (message) => {
   if (
     message.channel.id === SUBMIT_CHANNEL &&
@@ -55,7 +56,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Handle slash command interactions
+// Slash Command Logic
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
