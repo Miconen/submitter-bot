@@ -56,17 +56,32 @@ const commands = [
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
-// Register slash commands globally
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  const guilds = client.guilds.cache.map(g => g.id);
+
+  // Clean up per-guild (local) commands
+  for (const guildId of guilds) {
+    try {
+      await rest.put(
+        Routes.applicationGuildCommands(client.user.id, guildId),
+        { body: [] }
+      );
+      console.log(`🧹 Deleted local slash commands for guild: ${guildId}`);
+    } catch (err) {
+      console.error(`❌ Failed to delete local commands for ${guildId}:`, err);
+    }
+  }
+
+  // Register global commands
   try {
     await rest.put(
       Routes.applicationCommands(client.user.id),
       { body: commands }
     );
-    console.log('✅ Slash commands registered globally.');
+    console.log('🌍 Global slash commands registered successfully.');
   } catch (err) {
-    console.error('❌ Error registering slash commands:', err);
+    console.error('❌ Error registering global commands:', err);
   }
 });
 
@@ -86,8 +101,7 @@ client.on('interactionCreate', async (interaction) => {
   if (commandName === 'colostart' || commandName === 'coloend') {
     const file = interaction.options.getAttachment('screenshot');
 
-    await interaction.reply({ content: '✅ Start submission received!', ephemeral: true });
-
+    await interaction.reply({ content: '✅ Start submission received!', flags: 64 }); // ephemeral
     await reviewChannel.send({
       content: `📥 ${commandName === 'colostart' ? '**Start**' : '**End**'} submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}`,
       files: [file.url]
@@ -99,7 +113,7 @@ client.on('interactionCreate', async (interaction) => {
     const loot = interaction.options.getAttachment('loot');
     const notes = interaction.options.getString('notes') || 'None';
 
-    await interaction.reply({ content: '✅ Loot and modifiers submission received!', ephemeral: true });
+    await interaction.reply({ content: '✅ Loot and modifiers submission received!', flags: 64 }); // ephemeral
 
     await reviewChannel.send({
       content: `📤 Loot submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Notes: ${notes}`,
@@ -109,15 +123,15 @@ client.on('interactionCreate', async (interaction) => {
 
   if (commandName === 'cleanupcommands') {
     if (interaction.user.id !== process.env.ADMIN_USER_ID) {
-      return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
+      return interaction.reply({ content: '❌ You do not have permission to use this command.', flags: 64 });
     }
 
     try {
       await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-      await interaction.reply({ content: '✅ All global commands deleted.', ephemeral: true });
+      await interaction.reply({ content: '✅ All global commands deleted.', flags: 64 });
     } catch (err) {
       console.error(err);
-      await interaction.reply({ content: '❌ Failed to delete commands.', ephemeral: true });
+      await interaction.reply({ content: '❌ Failed to delete commands.', flags: 64 });
     }
   }
 });
