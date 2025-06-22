@@ -35,18 +35,20 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('lootmodifiers')
-    .setDescription('Submit your loot screenshot and list of modifiers.')
-    .addStringOption(option =>
-      option.setName('modifiers').setDescription('Modifiers used in the run').setRequired(true)
+    .setDescription('Submit your modifiers screenshot, optional loot screenshot, and optional notes.')
+    .addAttachmentOption(option =>
+      option.setName('modifiers').setDescription('Screenshot of modifiers used').setRequired(true)
     )
     .addAttachmentOption(option =>
       option.setName('loot').setDescription('Optional screenshot of your loot')
+    )
+    .addStringOption(option =>
+      option.setName('notes').setDescription('Optional notes about the run')
     )
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
-// Register slash commands
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   try {
@@ -90,20 +92,22 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (commandName === 'lootmodifiers') {
-    const modifiers = interaction.options.getString('modifiers');
+    const modifiers = interaction.options.getAttachment('modifiers');
     const loot = interaction.options.getAttachment('loot');
+    const notes = interaction.options.getString('notes') || '*No additional notes provided.*';
+
+    const filesToSend = loot ? [modifiers.url, loot.url] : [modifiers.url];
 
     await reviewChannel.send({
-      content: `📤 Loot submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Modifiers:\n${modifiers}`,
-      files: loot ? [loot.url] : []
+      content: `📤 Loot submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Notes:\n${notes}`,
+      files: filesToSend
     });
 
     await interaction.reply({
-      content: '✅ Your **loot and modifiers** have been submitted successfully!',
+      content: '✅ Your **modifiers** (and optional loot image) were submitted successfully!',
       flags: 64
     });
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
