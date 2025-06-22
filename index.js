@@ -26,10 +26,10 @@ client.on('messageCreate', async (message) => {
     const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
     const attachment = message.attachments.first();
 
-const timestamp = new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' });
+const unixTimestamp = Math.floor(Date.now() / 1000); // current time in seconds
 
 await reviewChannel.send({
-  content: `📸 New submission from **${message.author.username}** at \`${timestamp}\`:\n${message.content || ''}`,
+  content: `📸 New submission from <@${message.author.id}> at <t:${unixTimestamp}:f>:\n${message.content || ''}`,
   files: [attachment.url]
 });
 
