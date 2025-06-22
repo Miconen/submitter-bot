@@ -7,7 +7,7 @@ const client = new Client({
 });
 
 const REVIEW_CHANNEL = '1385623845469163660';
-const GUILD_ID = 'YOUR_GUILD_ID_HERE'; // Replace this with your Discord server ID
+const GUILD_ID = '979445890064470036'; // Replace this with your Discord server ID
 
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
