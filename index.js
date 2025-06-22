@@ -1,91 +1,138 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Routes, REST, AttachmentBuilder, SlashCommandBuilder, InteractionType } = require('discord.js');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ],
   partials: [Partials.Message, Partials.Channel]
 });
 
-const REVIEW_CHANNEL = '1385623845469163660';
-const GUILD_ID = '979445890064470036'; // Replace this with your Discord server ID
+const SUBMIT_CHANNEL = '1385624201544601680';   // e.g. '1234567890'
+const REVIEW_CHANNEL = '1385623845469163660';   // e.g. '0987654321'
 
+const commands = [
+  new SlashCommandBuilder()
+    .setName('colostart')
+    .setDescription('Submit your starting setup screenshot for the Colosseum event.'),
+  new SlashCommandBuilder()
+    .setName('coloend')
+    .setDescription('Submit your ending setup screenshot for the Colosseum event.'),
+  new SlashCommandBuilder()
+    .setName('lootmodifiers')
+    .setDescription('Submit your loot screenshot and list modifiers.')
+].map(command => command.toJSON());
+
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+// Register slash commands
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-
-  // OPTIONAL: Delete global commands if you've moved to guild commands only
-  // const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  // await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-
-  // Register slash commands (GUILD-ONLY)
-  const commands = [
-    new SlashCommandBuilder().setName('colostart').setDescription('Submit your starting setup screenshot for the Colosseum event'),
-    new SlashCommandBuilder().setName('coloend').setDescription('Submit your ending setup screenshot for the Colosseum event'),
-    new SlashCommandBuilder().setName('lootmodifiers').setDescription('Submit your loot screenshot and list modifiers')
-  ].map(cmd => cmd.toJSON());
-
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
-    await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: commands });
-    console.log('✅ Slash commands registered instantly for guild:', GUILD_ID);
-  } catch (error) {
-    console.error('❌ Failed to register slash commands:', error);
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      { body: commands }
+    );
+    console.log('✅ Slash commands registered.');
+  } catch (err) {
+    console.error('❌ Error registering slash commands:', err);
   }
 });
 
-client.on('interactionCreate', async interaction => {
+// Util for timestamp formatting
+function discordTimestamp() {
+  const unix = Math.floor(Date.now() / 1000);
+  return `<t:${unix}:f>`;
+}
+
+client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+  const { commandName } = interaction;
+  const userId = interaction.user.id;
+  const username = interaction.user.tag;
 
-  const filter = m => m.author.id === interaction.user.id;
-  const askForScreenshot = async (prompt) => {
-    await interaction.reply({ content: prompt, ephemeral: true });
+  const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
+
+  // Generic file prompt function
+  async function promptForFile(promptText, allowSkip = false) {
+    await interaction.reply({
+      content: promptText,
+      ephemeral: true
+    });
+
+    const filter = m => m.author.id === userId;
     const collected = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
-    return collected.first();
-  };
+    const userMessage = collected.first();
 
-  const postToReview = async (user, type, content, attachmentUrl = null) => {
-    const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
-    const timestamp = Math.floor(Date.now() / 1000);
-    const message = {
-      content: `📸 **${type} Submission** from <@${user.id}> at <t:${timestamp}:f>:\n${content || 'No additional notes.'}`
-    };
-    if (attachmentUrl) {
-      message.files = [attachmentUrl];
+    if (!userMessage) {
+      return { status: 'timeout' };
     }
-    await reviewChannel.send(message);
-  };
 
-  if (interaction.commandName === 'colostart') {
-    const msg = await askForScreenshot('📸 Please upload your **starting setup and inventory** screenshot.');
-    if (!msg) return interaction.followUp({ content: '⏰ Submission timed out.', ephemeral: true });
-    const attachment = msg.attachments.first();
-    await postToReview(interaction.user, 'Colo Start', msg.content, attachment?.url);
-    await interaction.followUp({ content: '✅ Starting setup submitted!', ephemeral: true });
+    if (allowSkip && userMessage.content.toLowerCase().includes('no loot')) {
+      return { status: 'skipped', message: userMessage };
+    }
+
+    if (userMessage.attachments.size > 0) {
+      return { status: 'file', message: userMessage };
+    }
+
+    return { status: 'invalid', message: userMessage };
   }
 
-  if (interaction.commandName === 'coloend') {
-    const msg = await askForScreenshot('📸 Please upload your **ending setup and inventory** screenshot.');
-    if (!msg) return interaction.followUp({ content: '⏰ Submission timed out.', ephemeral: true });
-    const attachment = msg.attachments.first();
-    await postToReview(interaction.user, 'Colo End', msg.content, attachment?.url);
-    await interaction.followUp({ content: '✅ Ending setup submitted!', ephemeral: true });
+  if (commandName === 'colostart' || commandName === 'coloend') {
+    const prompt = commandName === 'colostart'
+      ? '📸 Please upload your starting setup screenshot.'
+      : '📸 Please upload your ending setup screenshot.';
+
+    const response = await promptForFile(prompt);
+    if (response.status === 'file') {
+      const file = response.message.attachments.first().url;
+      await reviewChannel.send({
+        content: `📥 ${commandName === 'colostart' ? '**Start**' : '**End**'} submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}`,
+        files: [file]
+      });
+
+      await response.message.delete();
+      await interaction.deleteReply();
+    } else {
+      await interaction.followUp({ content: '❌ Invalid or no file received.', ephemeral: true });
+    }
   }
 
-  if (interaction.commandName === 'lootmodifiers') {
-    await interaction.reply({ content: '📸 Upload your **loot screenshot**, or type `no loot`.', ephemeral: true });
-    const lootResponse = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
-    if (!lootResponse.size) return interaction.followUp({ content: '⏰ Submission timed out.', ephemeral: true });
+  if (commandName === 'lootmodifiers') {
+    const lootResponse = await promptForFile('💰 Please upload your loot screenshot (or type "no loot" to skip):', true);
 
-    const lootMsg = lootResponse.first();
-    const noLoot = lootMsg.content.toLowerCase() === 'no loot';
-    const lootAttachment = lootMsg.attachments.first();
+    let lootFile = null;
+    if (lootResponse.status === 'file') {
+      lootFile = lootResponse.message.attachments.first().url;
+      await lootResponse.message.delete();
+    } else if (lootResponse.status === 'skipped') {
+      await lootResponse.message.delete();
+    } else {
+      await interaction.followUp({ content: '❌ Invalid or no file received.', ephemeral: true });
+      return;
+    }
 
-    await interaction.followUp({ content: '🛠️ Now type the **modifiers** used during this run.', ephemeral: true });
-    const modResponse = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
-    if (!modResponse.size) return interaction.followUp({ content: '⏰ Submission timed out.', ephemeral: true });
+    // Prompt for modifiers
+    await interaction.followUp({ content: '🎯 Please type the list of modifiers used.', ephemeral: true });
+    const filter = m => m.author.id === userId;
+    const collectedMods = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
+    const modMessage = collectedMods.first();
 
-    const modMsg = modResponse.first();
-    await postToReview(interaction.user, 'Loot + Modifiers', `💬 Modifiers: ${modMsg.content}`, noLoot ? null : lootAttachment?.url);
-    await interaction.followUp({ content: '✅ Loot and modifiers submitted!', ephemeral: true });
+    if (!modMessage) {
+      await interaction.followUp({ content: '⏰ Modifier submission timed out.', ephemeral: true });
+      return;
+    }
+
+    await reviewChannel.send({
+      content: `📤 Loot submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Modifiers:\n${modMessage.content}`,
+      files: lootFile ? [lootFile] : []
+    });
+
+    await modMessage.delete();
+    await interaction.deleteReply();
   }
 });
 
