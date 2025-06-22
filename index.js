@@ -4,10 +4,9 @@ const { Client, GatewayIntentBits, Partials, Routes, REST, SlashCommandBuilder }
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMessages
   ],
-  partials: [Partials.Message, Partials.Channel]
+  partials: [Partials.Channel]
 });
 
 const SUBMIT_CHANNEL = '1385624201544601680';
@@ -16,13 +15,33 @@ const REVIEW_CHANNEL = '1385623845469163660';
 const commands = [
   new SlashCommandBuilder()
     .setName('colostart')
-    .setDescription('Submit your starting setup screenshot for the Colosseum event.'),
+    .setDescription('Submit your starting setup screenshot for the Colosseum event.')
+    .addAttachmentOption(option =>
+      option.setName('screenshot').setDescription('Your starting setup screenshot').setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName('notes').setDescription('Optional notes for your start submission')
+    ),
+
   new SlashCommandBuilder()
     .setName('coloend')
-    .setDescription('Submit your ending setup screenshot for the Colosseum event.'),
+    .setDescription('Submit your ending setup screenshot for the Colosseum event.')
+    .addAttachmentOption(option =>
+      option.setName('screenshot').setDescription('Your ending setup screenshot').setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName('notes').setDescription('Optional notes for your end submission')
+    ),
+
   new SlashCommandBuilder()
     .setName('lootmodifiers')
-    .setDescription('Submit your loot screenshot and list modifiers.')
+    .setDescription('Submit your loot screenshot and list of modifiers.')
+    .addStringOption(option =>
+      option.setName('modifiers').setDescription('Modifiers used in the run').setRequired(true)
+    )
+    .addAttachmentOption(option =>
+      option.setName('loot').setDescription('Optional screenshot of your loot')
+    )
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -52,89 +71,34 @@ client.on('interactionCreate', async (interaction) => {
   const { commandName } = interaction;
   const userId = interaction.user.id;
   const username = interaction.user.tag;
-
   const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
 
-  async function promptForFile(promptText, allowSkip = false) {
-    await interaction.reply({
-      content: promptText,
-      ephemeral: true
-    });
-
-    const filter = m => m.author.id === userId;
-    const collected = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
-    const userMessage = collected.first();
-
-    if (!userMessage) return { status: 'timeout' };
-    if (allowSkip && userMessage.content.toLowerCase().includes('no loot')) {
-      return { status: 'skipped', message: userMessage };
-    }
-    if (userMessage.attachments.size > 0) {
-      return { status: 'file', message: userMessage };
-    }
-    return { status: 'invalid', message: userMessage };
-  }
-
-  // ColoStart or ColoEnd logic
   if (commandName === 'colostart' || commandName === 'coloend') {
-    const isStart = commandName === 'colostart';
-    const prompt = isStart
-      ? '📸 Please upload your starting setup screenshot.'
-      : '📸 Please upload your ending setup screenshot.';
-
-    const response = await promptForFile(prompt);
-    if (response.status === 'file') {
-      const file = response.message.attachments.first().url;
-      const note = response.message.content || '*No additional notes provided.*';
-
-      await reviewChannel.send({
-        content: `📥 **${isStart ? 'Start' : 'End'}** submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Notes:\n${note}`,
-        files: [file]
-      });
-
-      await response.message.delete();
-
-      await interaction.editReply({
-        content: `✅ Your **${isStart ? 'starting' : 'ending'} setup** was submitted successfully and forwarded to the event team.`,
-        ephemeral: true
-      });
-    } else {
-      await interaction.followUp({ content: '❌ Invalid or no file received.', ephemeral: true });
-    }
-  }
-
-  // Loot + Modifiers logic
-  if (commandName === 'lootmodifiers') {
-    const lootResponse = await promptForFile('💰 Please upload your loot screenshot (or type "no loot" to skip):', true);
-
-    let lootFile = null;
-    if (lootResponse.status === 'file') {
-      lootFile = lootResponse.message.attachments.first().url;
-      await lootResponse.message.delete();
-    } else if (lootResponse.status === 'skipped') {
-      await lootResponse.message.delete();
-    } else {
-      await interaction.followUp({ content: '❌ Invalid or no file received.', ephemeral: true });
-      return;
-    }
-
-    await interaction.followUp({ content: '🎯 Please type the list of modifiers used.', ephemeral: true });
-    const filter = m => m.author.id === userId;
-    const collectedMods = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
-    const modMessage = collectedMods.first();
-
-    if (!modMessage) {
-      await interaction.followUp({ content: '⏰ Modifier submission timed out.', ephemeral: true });
-      return;
-    }
+    const screenshot = interaction.options.getAttachment('screenshot');
+    const notes = interaction.options.getString('notes') || '*No additional notes provided.*';
+    const label = commandName === 'colostart' ? 'Start' : 'End';
 
     await reviewChannel.send({
-      content: `📤 Loot submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Modifiers:\n${modMessage.content}`,
-      files: lootFile ? [lootFile] : []
+      content: `📥 **${label}** submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Notes:\n${notes}`,
+      files: [screenshot.url]
     });
 
-    await modMessage.delete();
-    await interaction.followUp({
+    await interaction.reply({
+      content: `✅ Your **${label.toLowerCase()}ing setup** was submitted successfully and forwarded to the event team.`,
+      ephemeral: true
+    });
+  }
+
+  if (commandName === 'lootmodifiers') {
+    const modifiers = interaction.options.getString('modifiers');
+    const loot = interaction.options.getAttachment('loot');
+
+    await reviewChannel.send({
+      content: `📤 Loot submission from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n\n📝 Modifiers:\n${modifiers}`,
+      files: loot ? [loot.url] : []
+    });
+
+    await interaction.reply({
       content: '✅ Your **loot and modifiers** have been submitted successfully!',
       ephemeral: true
     });
@@ -142,4 +106,3 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
