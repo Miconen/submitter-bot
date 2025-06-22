@@ -85,7 +85,7 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.reply({
       content: `✅ Your **${label.toLowerCase()}ing setup** was submitted successfully and forwarded to the event team.`,
-      ephemeral: true
+      flags: 64
     });
   }
 
@@ -100,9 +100,10 @@ client.on('interactionCreate', async (interaction) => {
 
     await interaction.reply({
       content: '✅ Your **loot and modifiers** have been submitted successfully!',
-      ephemeral: true
+      flags: 64
     });
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
