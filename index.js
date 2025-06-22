@@ -2,22 +2,21 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
   partials: [Partials.Message, Partials.Channel]
 });
 
-const SUBMIT_CHANNEL = '1385624201544601680';
 const REVIEW_CHANNEL = '1385623845469163660';
-const GUILD_ID = '979445890064470036'; // 
+const GUILD_ID = 'YOUR_GUILD_ID_HERE'; // Replace this with your Discord server ID
 
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  // Register Slash Commands for this server
+  // OPTIONAL: Delete global commands if you've moved to guild commands only
+  // const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  // await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
+
+  // Register slash commands (GUILD-ONLY)
   const commands = [
     new SlashCommandBuilder().setName('colostart').setDescription('Submit your starting setup screenshot for the Colosseum event'),
     new SlashCommandBuilder().setName('coloend').setDescription('Submit your ending setup screenshot for the Colosseum event'),
@@ -26,42 +25,17 @@ client.once('ready', async () => {
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
-    await rest.put(
-      Routes.applicationGuildCommands(client.user.id, GUILD_ID),
-      { body: commands }
-    );
-    console.log('✅ Slash commands registered instantly to guild:', GUILD_ID);
+    await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: commands });
+    console.log('✅ Slash commands registered instantly for guild:', GUILD_ID);
   } catch (error) {
-    console.error('Slash command registration failed:', error);
+    console.error('❌ Failed to register slash commands:', error);
   }
 });
 
-// Screenshot forwarding logic
-client.on('messageCreate', async (message) => {
-  if (
-    message.channel.id === SUBMIT_CHANNEL &&
-    !message.author.bot &&
-    message.attachments.size > 0
-  ) {
-    const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
-    const attachment = message.attachments.first();
-    const timestamp = Math.floor(Date.now() / 1000);
-
-    await reviewChannel.send({
-      content: `📸 New submission from <@${message.author.id}> at <t:${timestamp}:f>:\n${message.content || ''}`,
-      files: [attachment.url]
-    });
-
-    await message.delete();
-  }
-});
-
-// Slash Command Logic
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   const filter = m => m.author.id === interaction.user.id;
-
   const askForScreenshot = async (prompt) => {
     await interaction.reply({ content: prompt, ephemeral: true });
     const collected = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
@@ -71,15 +45,12 @@ client.on('interactionCreate', async interaction => {
   const postToReview = async (user, type, content, attachmentUrl = null) => {
     const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
     const timestamp = Math.floor(Date.now() / 1000);
-
     const message = {
       content: `📸 **${type} Submission** from <@${user.id}> at <t:${timestamp}:f>:\n${content || 'No additional notes.'}`
     };
-
     if (attachmentUrl) {
       message.files = [attachmentUrl];
     }
-
     await reviewChannel.send(message);
   };
 
@@ -108,19 +79,12 @@ client.on('interactionCreate', async interaction => {
     const noLoot = lootMsg.content.toLowerCase() === 'no loot';
     const lootAttachment = lootMsg.attachments.first();
 
-    await interaction.followUp({ content: '🛠️ Now please type the **modifiers** used during this run.', ephemeral: true });
+    await interaction.followUp({ content: '🛠️ Now type the **modifiers** used during this run.', ephemeral: true });
     const modResponse = await interaction.channel.awaitMessages({ filter, max: 1, time: 60000 });
     if (!modResponse.size) return interaction.followUp({ content: '⏰ Submission timed out.', ephemeral: true });
 
     const modMsg = modResponse.first();
-
-    await postToReview(
-      interaction.user,
-      'Loot + Modifiers',
-      `💬 Modifiers: ${modMsg.content}`,
-      noLoot ? null : lootAttachment?.url
-    );
-
+    await postToReview(interaction.user, 'Loot + Modifiers', `💬 Modifiers: ${modMsg.content}`, noLoot ? null : lootAttachment?.url);
     await interaction.followUp({ content: '✅ Loot and modifiers submitted!', ephemeral: true });
   }
 });
