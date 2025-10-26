@@ -6,7 +6,6 @@ const {
   Routes,
   REST,
   SlashCommandBuilder,
-  InteractionType,
 } = require('discord.js');
 
 const client = new Client({
@@ -32,6 +31,9 @@ const commands = [
         .setDescription('Submit your PB screenshot')
         .addAttachmentOption(option =>
           option.setName('screenshot').setDescription('Upload your PB screenshot').setRequired(true)
+        )
+        .addStringOption(option =>
+          option.setName('teammates').setDescription('Mention your teammates (optional)').setRequired(false)
         )
     )
 ].map(command => command.toJSON());
@@ -67,15 +69,19 @@ client.on('interactionCreate', async (interaction) => {
 
   if (commandName === 'pb' && subcommand === 'submit') {
     const screenshot = options.getAttachment('screenshot');
+    const teammates = options.getString('teammates') || 'None';
     const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
 
     // Respond privately
-    await interaction.reply({ content: '✅ Your PB submission was received successfully!', ephemeral: true });
+    await interaction.reply({
+      content: '✅ Your PB submission was received and sent for review!',
+      ephemeral: true,
+    });
 
     // Send to mod review channel
     await reviewChannel.send({
-      content: `📥 **PB Submission** from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}`,
-      files: [screenshot.url]
+      content: `📥 **PB Submission** from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n👥 Teammates: ${teammates}`,
+      files: [screenshot.url],
     });
 
     // Delete original message from the submission channel
