@@ -20,7 +20,7 @@ const client = new Client({
 const SUBMIT_CHANNEL = '1385624201544601680'; // pb-event-submissions
 const REVIEW_CHANNEL = '1385623845469163660'; // pb-submissions-verification
 
-// Slash command: /pb submit
+// Slash command: /pb submit and /cleanupcommands
 const commands = [
   new SlashCommandBuilder()
     .setName('pb')
@@ -35,7 +35,10 @@ const commands = [
         .addStringOption(option =>
           option.setName('teammates').setDescription('Mention your teammates (optional)').setRequired(false)
         )
-    )
+    ),
+  new SlashCommandBuilder()
+    .setName('cleanupcommands')
+    .setDescription('Remove all global slash commands (admin only)')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -72,19 +75,16 @@ client.on('interactionCreate', async (interaction) => {
     const teammates = options.getString('teammates') || 'None';
     const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
 
-    // Respond privately
     await interaction.reply({
       content: '✅ Your PB submission was received and sent for review!',
       ephemeral: true,
     });
 
-    // Send to mod review channel
     await reviewChannel.send({
       content: `📥 **PB Submission** from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n👥 Teammates: ${teammates}`,
       files: [screenshot.url],
     });
 
-    // Delete original message from the submission channel
     const submitChannel = await client.channels.fetch(SUBMIT_CHANNEL);
     const messages = await submitChannel.messages.fetch({ limit: 5 });
 
@@ -101,6 +101,24 @@ client.on('interactionCreate', async (interaction) => {
       } catch (err) {
         console.error('❌ Failed to delete user message:', err);
       }
+    }
+  }
+
+  if (commandName === 'cleanupcommands') {
+    if (interaction.user.id !== process.env.ADMIN_USER_ID) {
+      return interaction.reply({
+        content: '❌ You do not have permission to use this command.',
+        ephemeral: true
+      });
+    }
+
+    try {
+      await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
+      await interaction.reply({ content: '✅ All global commands deleted.', ephemeral: true });
+      console.log('🧹 Global slash commands deleted.');
+    } catch (err) {
+      console.error(err);
+      await interaction.reply({ content: '❌ Failed to delete commands.', ephemeral: true });
     }
   }
 });
