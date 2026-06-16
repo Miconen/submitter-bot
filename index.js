@@ -20,7 +20,6 @@ const client = new Client({
 const SUBMIT_CHANNEL = '1385624201544601680'; // pb-event-submissions
 const REVIEW_CHANNEL = '1385623845469163660'; // pb-submissions-verification
 
-// Slash command: /pb submit
 const commands = [
   new SlashCommandBuilder()
     .setName('pb')
@@ -35,12 +34,30 @@ const commands = [
         .addStringOption(option =>
           option.setName('teammates').setDescription('Mention your teammates (optional)').setRequired(false)
         )
+    ),
+
+  new SlashCommandBuilder()
+    .setName('roll')
+    .setDescription('Roll a dice')
+    .addStringOption(option =>
+      option
+        .setName('dice')
+        .setDescription('Choose a dice type')
+        .setRequired(true)
+        .addChoices(
+          { name: 'd4', value: '4' },
+          { name: 'd6', value: '6' },
+          { name: 'd8', value: '8' },
+          { name: 'd10', value: '10' },
+          { name: 'd12', value: '12' },
+          { name: 'd20', value: '20' },
+          { name: 'd100', value: '100' }
+        )
     )
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
-// Register slash commands globally
 client.once('ready', async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   try {
@@ -72,19 +89,16 @@ client.on('interactionCreate', async (interaction) => {
     const teammates = options.getString('teammates') || 'None';
     const reviewChannel = await client.channels.fetch(REVIEW_CHANNEL);
 
-    // Respond privately
     await interaction.reply({
       content: '✅ Your PB submission was received and sent for review!',
       ephemeral: true,
     });
 
-    // Send to mod review channel
     await reviewChannel.send({
       content: `📥 **PB Submission** from <@${userId}> (${username})\nSubmitted: ${discordTimestamp()}\n👥 Teammates: ${teammates}`,
       files: [screenshot.url],
     });
 
-    // Delete original message from the submission channel
     const submitChannel = await client.channels.fetch(SUBMIT_CHANNEL);
     const messages = await submitChannel.messages.fetch({ limit: 5 });
 
@@ -102,6 +116,15 @@ client.on('interactionCreate', async (interaction) => {
         console.error('❌ Failed to delete user message:', err);
       }
     }
+  }
+
+  if (commandName === 'roll') {
+    const diceSize = parseInt(options.getString('dice'), 10);
+    const result = Math.floor(Math.random() * diceSize) + 1;
+
+    await interaction.reply({
+      content: `🎲 <@${userId}> rolled a d${diceSize} and got **${result}**!`
+    });
   }
 });
 
