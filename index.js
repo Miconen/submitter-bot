@@ -46,6 +46,7 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: 'd4', value: '4' },
+          { name: 'd5', value: '5' },
           { name: 'd6', value: '6' },
           { name: 'd8', value: '8' },
           { name: 'd10', value: '10' },
@@ -123,7 +124,7 @@ client.on('interactionCreate', async (interaction) => {
     const result = Math.floor(Math.random() * diceSize) + 1;
 
     await interaction.reply({
-      content: `🎲 <@${userId}> rolled a d${diceSize} and got **${result}**!`
+      content: `🎲 <@${userId}> rolled a d${diceSize} and got **${result}**`
     });
   }
 });
